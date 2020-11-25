@@ -82,19 +82,19 @@ class Data():
         character_dict = dict()
         count_characters = 0
 
-        season_id = friends_data['season_id']
-        episode_id = friends_data['episode_id']
         scene_id = friends_data['scene_id']
-        utterance_id = friends_data['utterance_id']
         speakers = friends_data['speaker']
         tokens = friends_data['tokens']
-        transcripts = friends_data['transcript']
 
         for i in range(num_lines-1):
             
             # If reached an empty line or the end of a conversation --> continue to the next line
             if len(tokens[i]) == 0 or len(tokens[i+1]) == 0:
                 continue  
+            
+            # If reached the end of a scene --> continue to the next line
+            if scene_id[i] != scene_id[i+1]:
+                continue 
 
             # tokenize speaker & addressee, add to character_dict
             speaker_name = speakers[i]
