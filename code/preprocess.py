@@ -109,3 +109,6 @@ class Data():
             addressee_scripts = tokens[i+1]
             spkr_adrs_list.append([character_dict['speaker_name'], speaker_scripts, character_dict['addressee_name'], addressee_scripts])
         return spkr_adrs_list, character_dict 
+
+    def read_batch(self, file, num, mode='train_or_test'):
+        pass
