@@ -8,18 +8,19 @@ import pickle
 import linecache
 import tensorflow as tf
 import os
+import sys
 
 class encoder_params():
 	def __init__(self):
 		self.data_folder_path = '../data'
 		self.friends_output_file_name = 'friends_transcripts.csv'
 
-		self.lr_rate = 0.1
+		self.lr_rate = 0.0005
 		self.embed_size = 256
 		self.batch_size = 64
 		self.hidden_sz = 512
 		self.start_halve = 5
-		self.dropout = 0.01
+		self.dropout = 0.1
 
 		self.speaker_mode = True
 		self.addressee_mode = True
@@ -28,7 +29,7 @@ class encoder_params():
 		self.max_epochs = 1
 
 class encode_model():
-	def __init__(self, params, data):
+	def __init__(self, params, data, is_speaker):
 		self.params = params
 		self.data = data
 		friends_data_dict = self.data.friends_tsv(num_seasons=10)
@@ -38,12 +39,12 @@ class encode_model():
 		print('num_characters = ', self.num_characters)
 		print('num_vocab = ', self.num_vocab)
 		self.train_data, self.test_data = self.data.train_test_split(self.friends_data, p_split=0.9) # num_train = 45416
-		self.model = lstm_model(self.params, self.num_vocab, self.num_characters)
-		# MyLstm(self.params, self.num_vocab, self.num_characters)
-		# print('MyLstm model is created!!!!!!!!!!!!!!\n\n\n')
+		self.model = lstm_model(self.params, self.num_vocab, self.num_characters, is_speaker)
+
 
 	def train(self):
 		num_epochs = 0
+		initial_state = None
 		while num_epochs < self.params.max_epochs:
 			print('=========================EPOCH ', num_epochs, "==========================\n")
 			# Adjust learning rate
@@ -52,15 +53,12 @@ class encode_model():
 			# Loop through all train_data in batches
 			start_index = 0
 			while (start_index + self.params.batch_size) < len(self.train_data[0]):
-			# while (start_index + self.params.batch_size) < len(self.train_data[0]):
-				
 				sources, targets, speakers, addressees = self.data.read_batch(self.train_data, start_index, mode='train')
 				with tf.GradientTape() as tape:
-					loss, probs = self.model.call(sources, targets, speakers, addressees)
+					loss, probs = self.model.call(sources, targets, speakers, addressees, initial_state)
 				print('-----------batch ', int(start_index/self.params.batch_size), ": loss = ", loss, " ---------------\n")
-				vars = [v.name for v in self.model.trainable_variables]
-				print(vars, '\n')
 				gradients = tape.gradient(loss, self.model.trainable_variables)
+				# print('       gradients = ', gradients)
 				self.model.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
 				start_index += self.params.batch_size
 			# Increment for next epoch
@@ -148,11 +146,24 @@ class encode_model():
 
 
 if __name__ == '__main__':
+	
+	if len(sys.argv) != 2 or sys.argv[1] not in {"SPEAKER", "SPEAKER_ADDRESSEE"}:
+		print("USAGE: python encode.py <Model Type>")
+		print("<Model Type>: [SPEAKER / SPEAKER_ADDRESSEE]")
+		exit()
+		
+	# Initialize model
+	if sys.argv[1] == "SPEAKER":
+		is_speaker = True
+	elif sys.argv[1] == "SPEAKER_ADDRESSEE":
+		is_speaker = False
+
+
 	start = time.time()
 	params = encoder_params()
 	data = Data(params)
 	print('encode.py: created params and data')
-	encode_m = encode_model(params, data)
+	encode_m = encode_model(params, data, is_speaker)
 	print('encode.py: created encode_model')
 	encode_m.train()
 	print('encode.py: finished training encode_model')
