@@ -100,13 +100,6 @@ class Data():
             speaker_name = speakers[i]
             addressee_name = speakers[i+1]
             if speaker_name not in character_dict.keys():
-<<<<<<< Updated upstream
-                character_dict['speaker_name'] = count_characters
-                count_characters += 1
-            if addressee_name not in character_dict.keys():
-                character_dict['addressee_name'] = count_characters
-                count_characters += 1
-=======
                 character_dict[speaker_name] = num_characters
                 num_characters += 1
             if addressee_name not in character_dict.keys():
@@ -114,13 +107,8 @@ class Data():
                 num_characters += 1
 
             # tokenize speaker scripts
->>>>>>> Stashed changes
             speaker_scripts = tokens[i]
             addressee_scripts = tokens[i+1]
-<<<<<<< Updated upstream
-            spkr_adrs_list.append([character_dict['speaker_name'], speaker_scripts, character_dict['addressee_name'], addressee_scripts])
-        return spkr_adrs_list, character_dict 
-=======
             tokenized_addressee_scripts = []
             for sentence in addressee_scripts: 
                 tokenized_addressee_scripts.extend(sentence)
@@ -223,4 +211,3 @@ class Data():
         addressees = data[2][start_index:(start_index + self.params.batch_size)]
 
         return sources, targets, speakers, addressees
->>>>>>> Stashed changes
