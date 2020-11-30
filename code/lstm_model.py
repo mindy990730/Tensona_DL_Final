@@ -210,10 +210,3 @@ class lstm_model(tf.keras.Model):
         decoded_vocabs = tf.cast(tf.argmax(input=probs, axis=2), dtype=tf.int64)
         accuracy = tf.reduce_mean((tf.cast(tf.equal(decoded_vocabs, labels), dtype=tf.float32)))
         return accuracy
-
-
-
-
-
-
-
