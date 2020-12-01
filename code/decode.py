@@ -180,7 +180,10 @@ class decoder_model(tf.keras.Model):
                 top_paths=top_path)
         return top_candidates
 
+    def decode(self):
+        pass
+
 # TODO: figure out args
 # if __name__ == '__main__':
-# 	model = decode_model(args)
+# 	model = decoder_model(args)
 # 	model.decode()
