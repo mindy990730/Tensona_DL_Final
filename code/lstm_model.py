@@ -6,6 +6,7 @@ import linecache
 import math
 import tensorflow as tf
 import os
+# from decode import *
 
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
@@ -169,7 +170,6 @@ class lstm_model(tf.keras.Model):
         # print('\nsource embedding = ', source_ebd)
         # run LSTM encoder on the source sentence
         encoded_output, initial_state = self.encoder(source_ebd, initial_state=initial_state)
-        # print('encoded output = \n\n', encoded_output)
         losses = []
         probs_list = []
         # Going horizontally by columns and predict one word each step; compare loss with target next word
@@ -178,8 +178,8 @@ class lstm_model(tf.keras.Model):
             probs, initial_state = self.decoder(encoded_output, initial_state, target_ebd, speaker_list, addressee_list)
             labels = tf.squeeze(batched_target[:, i+1]) # shape = (batch_size,)
             l = self.loss_func(probs, labels)
-            if i%5 ==0:
-                print('loss in the sentence = ', l)
+            # if i%5 ==0:
+                # print('loss in the sentence = ', l)
             losses.append(l)
             probs_list.append(probs)
         losses = tf.convert_to_tensor(losses) 
@@ -206,7 +206,10 @@ class lstm_model(tf.keras.Model):
         :param labels: prediction of next word in target, shape = (sentence_max_length-1, batch_size)
         :return: scalar tensor of accuracy of the batch between 0 and 1     
         """
-        # Hardcoded, #TODO: Try beam search
-        decoded_vocabs = tf.cast(tf.argmax(input=probs, axis=2), dtype=tf.int64)
+        #TODO: Try beam search
+        # decoded_vocabs = tf.nn.ctc_beam_search_decoder(input = probs, sequence_length = 20, beam_width=200, top_paths=200)
+        decoded_vocabs = beam_search(probs,200)
+        # Hardcoded
+        # decoded_vocabs = tf.cast(tf.argmax(input=probs, axis=2), dtype=tf.int64)
         accuracy = tf.reduce_mean((tf.cast(tf.equal(decoded_vocabs, labels), dtype=tf.float32)))
         return accuracy
