@@ -2,185 +2,159 @@ import tensorflow as tf
 import numpy as np
 from tensorflow.keras import Model
 import os
+import sys
 from lstm_model import *
+from encode import *
+from numpy.random import randint
 
-class decoder_model(tf.keras.Model):
-    def __init__(self, params, num_vocab, num_characters, is_speaker):
+class decoder_lstm_model(lstm_model):
+    def call(self, batched_source, batched_target, speaker_list, addressee_list, initial_state):
+        """
+        Runs the decoder model on one batch of source & target inputs
 
-        super(decoder_model, self).__init__()
-        self.is_speaker = is_speaker
-        self.params = params
-        hidden_sz = params.hidden_sz
+        :param batched_source: 2-D array of size (batch_size, sentence_max_length) that contains the batched, tokenized source scripts 
+        :param batched_target: 2-D array of size (batch_size, sentence_max_length) that contains the batched, tokenized target scripts 
+        :param speaker_list: 1-D array of size (batch_size) that contains speaker ids
+        :param addressee_list: 1-D array of size (batch_size) that contains addressee ids
 
-        self.persona_embedding = tf.random.normal([num_characters, self.params.embed_size], stddev=.1, dtype=tf.float32)
-        self.lstm_t_1 = tf.keras.layers.LSTM(hidden_sz, activation='relu', dropout=self.params.dropout, return_state=True, return_sequences=True)
-        self.lstm_t_2 = tf.keras.layers.LSTM(hidden_sz, activation='relu', dropout=self.params.dropout, return_state=True, return_sequences=True)
-        self.lstm_t_3 = tf.keras.layers.LSTM(hidden_sz, activation='relu', dropout=self.params.dropout, return_state=True, return_sequences=True)
-        self.lstm_t_4= tf.keras.layers.LSTM(hidden_sz, activation='relu', return_state=True, return_sequences=True)
-        self.dense = tf.keras.layers.Dense(num_vocab, activation='softmax')
+        :return loss: a tensor that contains the loss of this batch
+        :       probs_list: a 2-D tensor that contains probabilities calculated for each column of 
+                            words in target, shape = (sentence_max_length-1, batch_size, num_vocab)
 
-        if not self.is_speaker:
-            self.speaker_linear = tf.keras.layers.Dense(self.params.embed_size)
-            self.addressee_linear = tf.keras.layers.Dense(self.params.embed_size)
-            self.s_a_linear = tf.keras.layers.Dense(self.params.embed_size, activation='tanh')
+        """
+     
+        source_ebd = tf.nn.embedding_lookup(self.source_embedding, batched_source)
+        encoded_outputs, initial_state = self.encoder(source_ebd, initial_state=initial_state)
+        losses = []
 
-        self.sentence_max_length = 20
-        self.beam_size = 200
-        
+        for i in range(tf.shape(batched_target)[1]-1):
+            target_ebd = tf.nn.embedding_lookup(self.target_embedding, batched_target[:, i]) # shape = (batch_size, 1, embed_size)
+            probs, initial_state = self.decoder(encoded_outputs, initial_state, target_ebd, speaker_list, addressee_list)
+            labels = tf.squeeze(batched_target[:, i+1]) 
+            l = self.loss_func(probs, labels)
+            losses.append(l)
+        losses = tf.convert_to_tensor(losses) 
+        loss = tf.reduce_sum(losses)
 
-    def call(self, encoded_output, initial_state, word_embedding, speaker, addressee):
+        # start with the first column of the batched target
+        start=self.target_embedding(batched_target[:,0])
+        init_probs,init_state= get_decoder_outputs(encoded_outputs, initial_state, start, speaker_list, addressee_list)
+        probs_list = self.beam_search(start,init_probs, init_state, encoded_outputs)
+        return losses, probs_list
+
+    def self_beam_search(self,start,init_probs, init_state, encoded_outputs):
+        """
+        Performs beam search to produce the top N candidates
+
+        :param start: 1-D array of size (sentence_max_length) that serves as the starting column of beam search
+        :param probs:  float tensor, word prediction probabilities (batch_size, num_vocab)
+        :param initial_state: hidden state from previous executions
+
+        :return top_candidates: top N candidates represented as probabilities
         """
 
-        Forward pass of target LSTM that calculates the probablity of next words. 
-
-        :param encoded_output: output of lstm_source, shape = (batch_size, sentence_max_length, embed_size)
+        # initialize first round of beam search
+        init_probs = tf.nn.log_softmax(init_probs)# log_probs in the scoring function
+        top_probs, candidates = tf.nn.top_k(init_probs, k = self.beam_size,sorted = False) #computes top-k entries in each row
+        candidates = tf.expand_dims(candidates,axis = 2)
         
-        :param initial_state: last hidden_state of lstm_source or previous calls of lstm_target
-        :param word_embedding: target embedding input, shape = (batch_size, 1, embed_size)
-        :param speaker: list of speakers in this batch, shape = (batch_size)
-        :param addressee: list of addressee in this batch, shape = (batch_size)
-        :param is_speaker: True if speaker model, False if speaker-addressee model
-
-        :return probs: probilities of vocab for this batch of words, shape = (batch_size, num_vocab)
-        :       initial_state: the last hidden state of this call; to be used in the next call
-        """
-        # Concatenate embeddings 
-        for i in range(self.params.batch_size): # in each sentence of this bacth
-            word_embeddings_in_s = tf.slice(encoded_output, [i, 0, 0], [1, 1, self.params.embed_size]) # shape = (1, 1, embed_size)
-            for s in range(1, tf.shape(encoded_output)[1], 1):
-                w_e = tf.slice(encoded_output, [i, s, 0], [1, 1, self.params.embed_size])
-                word_embeddings_in_s = tf.concat((word_embeddings_in_s, w_e), axis=2)
-            # Now word_embeddings_in_s shape = (1, 1, sentence_max_length * embed_size)
-            if i == 0:
-                reshaped_encoder_output = word_embeddings_in_s
-            else:
-                reshaped_encoder_output = tf.concat((reshaped_encoder_output, word_embeddings_in_s), axis=0)
-
-        # Now reshaped_encoder_output shape = (batch_size, 1, sentence_max_length * embed_size)
-        word_embedding = tf.expand_dims(word_embedding, axis=1)
-        lstm_t_input = tf.concat([reshaped_encoder_output, word_embedding], axis=2) # shape = (batch_size, 1, (1+sentence_max_length) * embed_size)
-
-        speaker_embed = tf.nn.embedding_lookup(self.persona_embedding, speaker) # shape = (batch_size, embed_size)
-        speaker_embed = tf.expand_dims(speaker_embed, axis=1) # shape = (batch_size, 1, embed_size)
-        
-        if self.is_speaker:
-            lstm_t_input = tf.concat([lstm_t_input, speaker_embed], axis=2) # shape = (batch_size, 1, (2+sentence_max_length) * embed_size)
-        else:
-            addressee_embed = tf.nn.embedding_lookup(self.persona_embedding, addressee) # shape = (batch_size, embed_size)
-            addressee_embed = tf.expand_dims(addressee_embed, axis=1)  # shape = (batch_size, 1, embed_size)
-            
-            addressee_embed = self.addressee_linear(addressee_embed) # shape = (batch_size, 1, embed_size)
-            speaker_embed = self.speaker_linear(speaker_embed) # shape = (batch_size, 1, embed_size)
-            
-            combined_embed = tf.concat([speaker_embed, addressee_embed], axis=2) # shape = (batch_size, 1, 2 * embed_size)
-            combined_embed = self.s_a_linear(combined_embed) # shape = (batch_size, 1, embed_size)
-            lstm_t_input = tf.concat([lstm_t_input, combined_embed], axis=2) # shape = (batch_size, 1, (3+sentence_max_length) * embed_size)
-        
-        output, h, c = self.lstm_t_1(lstm_t_input, initial_state=initial_state)
-        initial_state = (h,c)
-        output, h, c = self.lstm_t_2(output, initial_state=initial_state)
-        initial_state = (h,c)
-        output, h, c = self.lstm_t_3(output, initial_state=initial_state)
-        initial_state = (h,c)
-        output, h, c = self.lstm_t_4(output, initial_state=initial_state)
-        initial_state = (h,c)
-        probs = self.dense(output) # shape = (batch_size, 1, num_vocab)
-        probs = tf.squeeze(probs)
-        return probs, initial_state
-
-        # source_ebd = tf.nn.embedding_lookup(self.source_embedding, batched_source) # shape = (batch_size, sentence_max_length, embed_size)
-        # probs, initial_state = self.encoder(source_ebd, initial_state=initial_state)
-        # start=self.target_embedding(batched_target[:,0])
-
-        # return self.beam_search(start,initial_state)
-
-    def self_beam_search(self, probs, initial_state):
-        """
-        Performs beam search to produce the N-best lists
-
-        :param initial_state:  a 3-D tensor that contains probabilities calculated for each column of words
-                        in target, shape = (sentence_max_length-1, batch_size, num_vocab)
-        :param stop_token: a token that signals the end of a single hypothesis
-        :param max_decoding_length: maximumum length of generated candidates 
-        :param beam_size: the scope of next-word candidates to search for 
-        :return: N-best list
-        """
-        
-        print("set up self_beam_search")
-
-        beam_size = self.beam_size
-        max_length = self.sentence_max_length
-        #need encoder model
-        probs=tf.nn.softmax(probs)
-        h = initial_state[0]
-        c = initial_state[1]
-
-        # initialize list for adding hypothesis & their scores
-        best_candidates = []
-        top_probs, top_idx = tf.math.top_k(probs, beam_size, sorted = True) #computes top-k entries in each row
-        beam_history = tf.expand_dims(top_idx,axis = 2)
-
         # At each time step, examine all B × B possible next-word candidates
-        for i in range (1, max_length):
-            for j in range (beam_size):
+        for i in range (1, self.sentence_max_length):
+            for b in range (self.beam_size):
 
-                # probs,h1,c1=self.decoder(context,h,c,self.tembed(beamHistory[:,k,-1]),speaker_label,addressee_label)
-                # probs = tf.nn.log_softmax(probs)
-                prob_k,beam_k = tf.math.top_k(probs,beam_size, sorted = True)
-                curr_candidates = []
+                #find the top b candidates at this step
+                probs,h,c= get_decoder_outputs(encoded_outputs,init_state,self.target_embedding(candidates[:,b,-1]),speaker_list,addressee_list)
+                probs = tf.nn.log_softmax(probs)
+                prob_k,candidates_k = tf.nn.top_k(probs,k = self.beam_size, sorted = False)
+                
+                #checks if each candidate ends in EOT
+                prob_k *= (candidates[:,b]!=2).all(axis=1)
+                prob_k = tf.expand_dims(prob_k,axis = 1)
+                prob_k += tf.expand_dims(top_probs[:,b], axis = 1)
 
-                # add all hypothesis ending with an EOS token to the N-best list.
-                hyp = initial_state[i][j]
-                if hyp[:-1] == 1:
-                    best_candidates.append(hyp)
+                cur_candidates = tf.expand_dims(candidates[:,b], axis = 1)
+                candidates_k = tf.concat((cur_candidates,tf.expand_dims(candidates_k)),2)
+
+                if b==0:
+                    prob = prob_k
+                    beam = candidates_k
+                    hs = tf.expand_dims(h,axis = 2)
+                    cs = tf.expand_dims(c,axis = 2)
+
                 else:
-                    curr_candidates.append(hyp)
+                    prob = tf.concat((prob,prob_k),1)
+                    beam = tf.concat((beam,candidates_k),1)
+                    hs = tf.concat((hs,tf.expand_dims(h,axis = 2)),2)
+                    cs = tf.concat((cs,tf.expand_dims(h,axis = 2)),2)
 
-                # preserve the top-B unfinished hypotheses: 
-                best_probs, idx = tf.math.top_k(curr_candidates, k=beam_size, sorted = True) #computes top-k entries in each row
-                best_candidates.append(best_probs)
+                # TODO: preserve the top-B unfinished hypotheses: 
+                top_probs,top_idx = tf.nn.top_k(prob,k = self.beam_size,sorted = False)
+                # candidates = beam[torch.arange(beam.size(0)).view(-1,1).expand(index.size()).contiguous().view(-1),
+                #             index.view(-1),:].view(index.size(0),index.size(1),beam.size(2))
+                # if (candidates == 2).any(axis=2).all():
+                #     break
 
-        # rerank the generated N-best list using a scoring function that linearly combines 
-        # a length penalty and the log likelihood of the source given the target
-        top_candidates = [([], 0)]
-        for i in len(best_candidates):
-            #TODO: figure out correct value & equation
-            score = 0 # might be log_probs / length_penalty
-            top_candidates.append((best_candidates[i],score))
+                h_list = hs.clone()
+                c_list = cs.clone()
 
-        top_candidates = sorted(top_candidates, key = lambda v: v[1], reverse = True)
-        return top_candidates
+            # TODO: rank the candidates
+            predicted_path = tf.argmax(top_probs,1)
+            # top_candidates = candidates[torch.arange(candidates.size(0)),predicted_path,:]
+            return top_candidates
 
-    def tf_beam_search1(self, initial_state,beam_width):
+    def get_decoder_outputs(self, encoded_outputs, initial_state, embedding, speaker, addressee):
+        probs, state = self.decoder(encoded_outputs, initial_state, embedding, speaker, addressee)
+        return probs, state
+
+    def tf_beam_search(self, initial_state, beam_width):
         # TODO: figure out correct parameters
 
-        print("set up tf_beam_search1")
-        bsd = tf.contrib.seq2seq.BeamSearchDecoder(
-            cell=self.decode_cell,
-            embedding=self.target_embedding,
-            end_token=1,
-            initial_state=initial_state,
-            beam_width=beam_width,
-            output_layer=self.output_layer,
-            length_penalty_weight=self.config.length_penalty_weight)
+        print("set up tf_beam_search")
+        # bsd = tf.contrib.seq2seq.BeamSearchDecoder(
+        #     cell=self.decode_cell,
+        #     embedding=self.target_embedding,
+        #     end_token=1,
+        #     initial_state=initial_state,
+        #     beam_width=beam_width,
+        #     output_layer=output_layer,
+        #     length_penalty_weight=self.config.length_penalty_weight)
+        # final_outputs, final_state, final_sequence_lengths = tf.contrib.seq2seq.dynamic_decode(
+        #     bsd,output_time_major=False,maximum_iterations=20)
+        # top_candidates = final_outputs.ids
 
-        final_outputs, final_state, final_sequence_lengths = tf.contrib.seq2seq.dynamic_decode(
-            bsd,output_time_major=False,maximum_iterations=20)
-        top_candidates = final_outputs.predicted_ids
+        top_candidates =  tf.nn.ctc_beam_search_decoder(input = initial_state, 
+                sequence_length = self.sentence_max_length, beam_width=self.beam_size, 
+                top_paths=self.beam_size)
+        print("TOP CANDIDATES = ",top_candidates)
 
-        # TODO: figure out correct dimensions (beam search might add -1 when meet end token? and tf will delete start tokens)
+        # TODO: figure out correct dimensions 
         top_candidates = tf.transpose(top_candidates, perm=[0, 2, 1])
-        
-        pass 
+        return top_candidates 
     
-    def tf_beam_search2(self,probs, seq_length, beam_width, top_path):
-        print("set up tf_beam_search2")
-        top_candidates =  tf.nn.ctc_beam_search_decoder(input = probs, 
-                sequence_length = seq_length, beam_width=beam_width, 
-                top_paths=top_path)
-        return top_candidates
 
-# TODO: figure out args
-# if __name__ == '__main__':
-# 	model = decode_model(args)
-# 	model.decode()
+    def decode(self):
+        #TODO: turn id to words
+        #TODO: write to output file
+        pass
+
+# TODO: figure out how to run this
+if __name__ == '__main__':
+    if sys.argv[1] == "SPEAKER":
+        is_speaker = True
+    elif sys.argv[1] == "SPEAKER_ADDRESSEE":
+        is_speaker = False
+
+
+    params = encoder_params()
+    
+    model = decoder_lstm_model(params, 20,20, is_speaker)
+
+    #fake data
+    probs = tf.random.normal([64, 15105], 3, 1, tf.float32)
+    initial_state = tf.random.normal([512, 512], 6, 1, tf.float32)
+    speaker_list = randint(1, 10, 64)
+    addressee_list = randint(1, 10, 64)
+    batched_source = (np.random.random ([64,20]) * 10).astype(int)
+    batched_target = (np.random.random ([64,20]) * 10).astype(int)
+
+    model.call(batched_source, batched_target, speaker_list, addressee_list, initial_state)
