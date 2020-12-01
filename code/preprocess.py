@@ -69,6 +69,52 @@ class Data():
         # show sample
         friends_df.head()
         return friends_data
+    
+    def dialogue_tsv(self):
+        """
+        To turn dialogues_text.txt into a dictionary and a csv file 
+        
+        :return dialogue_data: a dictionary containing speakers, tokens, and scripts
+        """
+        dialogue_data = dict(
+                            speaker=[],
+                            tokens=[],
+                            script=[]
+                            )
+        print("Loading dialogues...")
+        file_path = '../data/dialogues_text.txt'
+        dialogues = open(file_path, 'r').readlines()
+        speaker_id = 0
+        addressee_id = 1
+
+        #for each conversation
+        for i in range (len(dialogues)):
+            conversation = dialogues[i].split('__eou__')
+            conversation = conversation[:-1]
+
+            if len(conversation) < 3:
+                continue 
+
+            for j in range (len(conversation)):
+                
+                if j%2==0:
+                    dialogue_data['speaker'].append(speaker_id)
+                elif j%2==1:
+                    dialogue_data['speaker'].append(addressee_id)
+
+                dialogue_data['tokens'].append(conversation[j].split())
+                dialogue_data['script'].append(conversation[j])
+
+            speaker_id = speaker_id + 2
+            addressee_id = addressee_id + 2
+
+        dialogue_df = pd.DataFrame(dialogue_data)
+        dialogue_df.to_csv('dialogues.csv', sep='\t', index=False)
+        print('File saved in ' + 'dialogues.csv' +' !')
+        # show sample
+        dialogue_df.head()
+
+        return dialogue_data
 
     def cleanup_and_build_dict(self, friends_data):
         """

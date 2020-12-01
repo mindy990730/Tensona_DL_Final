@@ -33,6 +33,7 @@ class encode_model():
 		self.params = params
 		self.data = data
 		friends_data_dict = self.data.friends_tsv(num_seasons=10)
+		dialogue_data_dict = self.data.dialogue_tsv()
 		self.friends_data = self.data.cleanup_and_build_dict(friends_data_dict)
 		self.num_vocab = len(list(self.data.vocab_dict.keys())) # 15105
 		self.num_characters = len(list(self.data.character_dict.keys())) #656
