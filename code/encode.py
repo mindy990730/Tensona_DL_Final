@@ -9,6 +9,7 @@ import linecache
 import tensorflow as tf
 import os
 import sys
+from decode import *
 
 class encoder_params():
 	def __init__(self):
@@ -40,6 +41,7 @@ class encode_model():
 		print('num_vocab = ', self.num_vocab)
 		self.train_data, self.test_data = self.data.train_test_split(self.friends_data, p_split=0.9) # num_train = 45416
 		self.model = lstm_model(self.params, self.num_vocab, self.num_characters, is_speaker)
+		# self.model = beam_decoder(self.params, self.num_vocab, self.num_characters, is_speaker)
 
 
 	def train(self):
