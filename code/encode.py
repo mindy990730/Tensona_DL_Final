@@ -30,16 +30,24 @@ class encoder_params():
 		self.max_epochs = 1
 
 class encode_model():
-	def __init__(self, params, data, is_speaker):
+	def __init__(self, params, data, is_speaker, is_friends):
 		self.params = params
 		self.data = data
-		friends_data_dict = self.data.friends_tsv(num_seasons=10)
-		self.friends_data = self.data.cleanup_and_build_dict(friends_data_dict)
-		self.num_vocab = len(list(self.data.vocab_dict.keys())) # 15105
-		self.num_characters = len(list(self.data.character_dict.keys())) #656
+
+		if is_friends==True:
+			friends_data_dict = self.data.friends_tsv(num_seasons=10)
+			self.data_dict = self.data.cleanup_and_build_dict(friends_data_dict)
+			self.num_characters = self.data.num_characters
+		else:
+			dialogue_data_dict = self.data.dialogue_tsv()
+			self.data_dict = self.data.build_dialogue_dict(dialogue_data_dict)
+			self.num_characters = self.data.num_characters
+		
+		self.num_vocab = len(list(self.data.vocab_dict.keys())) # Friends: 15105 
+
 		print('num_characters = ', self.num_characters)
 		print('num_vocab = ', self.num_vocab)
-		self.train_data, self.test_data = self.data.train_test_split(self.friends_data, p_split=0.9) # num_train = 45416
+		self.train_data, self.test_data = self.data.train_test_split(self.data_dict, p_split=0.9) # Friends: num_train = 45416
 		self.model = lstm_model(self.params, self.num_vocab, self.num_characters, is_speaker)
 		# self.model = beam_decoder(self.params, self.num_vocab, self.num_characters, is_speaker)
 
@@ -149,9 +157,10 @@ class encode_model():
 
 if __name__ == '__main__':
 	
-	if len(sys.argv) != 2 or sys.argv[1] not in {"SPEAKER", "SPEAKER_ADDRESSEE"}:
-		print("USAGE: python encode.py <Model Type>")
+	if len(sys.argv) != 3 or sys.argv[1] not in {"SPEAKER", "SPEAKER_ADDRESSEE"} or sys.argv[2] not in {"FRIENDS", "DIALOGUE"}:
+		print("USAGE: python encode.py <Model Type> <Dataset>")
 		print("<Model Type>: [SPEAKER / SPEAKER_ADDRESSEE]")
+		print("<Model Type>: [FRIENDS / DIALOGUE]")
 		exit()
 		
 	# Initialize model
@@ -159,13 +168,18 @@ if __name__ == '__main__':
 		is_speaker = True
 	elif sys.argv[1] == "SPEAKER_ADDRESSEE":
 		is_speaker = False
+	
+	if sys.argv[2] == "FRIENDS":
+		is_friends = True
+	elif sys.argv[2] == "DIALOGUE":
+		is_friends = False
 
 
 	start = time.time()
 	params = encoder_params()
 	data = Data(params)
 	print('encode.py: created params and data')
-	encode_m = encode_model(params, data, is_speaker)
+	encode_m = encode_model(params, data, is_speaker, is_friends)
 	print('encode.py: created encode_model')
 	encode_m.train()
 	print('encode.py: finished training encode_model')

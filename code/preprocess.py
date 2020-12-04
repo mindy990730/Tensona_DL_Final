@@ -13,6 +13,7 @@ class Data():
         self.EOT = 1 
         self.vocab_dict = None
         self.character_dict = None
+        self.num_characters = 0
 
     def friends_tsv(self, num_seasons):
         """
@@ -69,6 +70,52 @@ class Data():
         # show sample
         friends_df.head()
         return friends_data
+    
+    def dialogue_tsv(self):
+        """
+        To turn dialogues_text.txt into a dictionary and a csv file 
+        
+        :return dialogue_data: a dictionary containing speakers, tokens, and scripts
+        """
+        dialogue_data = dict(
+                            speaker=[],
+                            tokens=[],
+                            script=[]
+                            )
+        print("Loading dialogues...")
+        file_path = '../data/dialogues_text.txt'
+        dialogues = open(file_path, 'r').readlines()
+        speaker_id = 0
+        addressee_id = 1
+
+        #for each conversation
+        for i in range (len(dialogues)):
+            conversation = dialogues[i].split('__eou__')
+
+            if len(conversation) < 4:
+                continue 
+
+            for j in range (len(conversation)):
+                
+                if j%2==0:
+                    dialogue_data['speaker'].append(speaker_id)
+                elif j%2==1:
+                    dialogue_data['speaker'].append(addressee_id)
+
+                dialogue_data['tokens'].append(conversation[j].split())
+                dialogue_data['script'].append(conversation[j])
+
+            speaker_id = speaker_id + 2
+            addressee_id = addressee_id + 2
+
+        self.num_characters = max(speaker_id, addressee_id) - 2
+
+        dialogue_df = pd.DataFrame(dialogue_data)
+        dialogue_df.to_csv('dialogues.csv', sep='\t', index=False)
+        print('File saved in ' + 'dialogues.csv' +' !')
+        # show sample
+        dialogue_df.head()
+        return dialogue_data
 
     def cleanup_and_build_dict(self, friends_data):
         """
@@ -118,9 +165,11 @@ class Data():
 
             # tokenize speaker scripts
             speaker_scripts = tokens[i]
+            
             tokenized_speaker_scripts = []
             for sentence in speaker_scripts: 
                 tokenized_speaker_scripts.extend(sentence)
+
             # only keep sentence_max_length number of words at most
             if len(tokenized_speaker_scripts) > self.params.sentence_max_length:
                 tokenized_speaker_scripts = tokenized_speaker_scripts[:self.params.sentence_max_length]
@@ -141,15 +190,15 @@ class Data():
                 tokenized_addressee_scripts.extend(sentence)
             if len(tokenized_addressee_scripts) > self.params.sentence_max_length-2: # account for EOS & EOT
                 # only keep sentence_max_length number of words at most
-                tokenized_addressee_scripts = tokenized_addressee_scripts[:self.params.sentence_max_length]
+                tokenized_addressee_scripts = tokenized_addressee_scripts[:self.params.sentence_max_length-2]
             for j in range(len(tokenized_addressee_scripts)):
                 word = tokenized_addressee_scripts[j]
                 if word not in vocab_dict.keys():
                     vocab_dict[word] = num_vocab
                     num_vocab += 1
                 tokenized_addressee_scripts[j] = vocab_dict[word]
-            if len(tokenized_addressee_scripts) < self.params.sentence_max_length:
-                extension = np.zeros(self.params.sentence_max_length-len(tokenized_addressee_scripts))
+            if len(tokenized_addressee_scripts) < self.params.sentence_max_length-2:
+                extension = np.zeros(self.params.sentence_max_length-len(tokenized_addressee_scripts)-2)
                 tokenized_addressee_scripts.extend(extension)
             
             # Add EOS & EOT to tokenized_addressee_scripts
@@ -159,8 +208,80 @@ class Data():
         # Update hyperparameters of vocab & character dict
         self.vocab_dict = vocab_dict
         self.character_dict = character_dict
-        # print()
+        self.num_characters = len(list(self.character_dict.keys())) 
+        # print(spkr_adrs_list[0:10])
         return spkr_adrs_list
+    
+    def build_dialogue_dict(self, dialogue_data):
+        """
+        :param friends_data: a dict containing info of 'daily dialogue', output of dialogue_tsv()
+        :return spkr_adrs_list: 2-D array with each row = [speaker_id, speaker_scripts, addressee_id, addressee_scripts]
+        
+        """
+        num_lines = len(dialogue_data['speaker'])
+        spkr_adrs_list = []
+        vocab_dict = dict()
+        vocab_dict['EOS'] = self.EOS
+        vocab_dict['EOT'] = self.EOT
+        num_vocab = 2 # EOS=0, EOT=1
+
+        speakers = dialogue_data['speaker']
+        tokens = dialogue_data['tokens']
+
+        i = 0
+
+        while i < num_lines - 1:
+
+            #while not reach the end of a dialogue
+            while len(tokens[i])!=0 and len(tokens[i+1])!=0:
+
+                tokenized_speaker_scripts = tokens[i]
+
+                if len(tokenized_speaker_scripts) > self.params.sentence_max_length:
+                    tokenized_speaker_scripts = tokenized_speaker_scripts[:self.params.sentence_max_length]
+
+                for x in range(len(tokenized_speaker_scripts)):
+                    word = tokenized_speaker_scripts[x]
+                    if word not in vocab_dict.keys():
+                        vocab_dict[word] = num_vocab
+                        num_vocab += 1
+                    tokenized_speaker_scripts[x] = vocab_dict[word] # tokenize word --> id
+
+                if len(tokenized_speaker_scripts) < self.params.sentence_max_length:
+                    extension = np.zeros(self.params.sentence_max_length-len(tokenized_speaker_scripts))
+                    tokenized_speaker_scripts.extend(extension)
+                
+                tokenized_addressee_scripts = tokens[i+1]
+
+                if len(tokenized_addressee_scripts) > self.params.sentence_max_length-2: # account for EOS & EOT
+                # only keep sentence_max_length number of words at most
+                    tokenized_addressee_scripts = tokenized_addressee_scripts[:self.params.sentence_max_length-2]
+                for j in range(len(tokenized_addressee_scripts)):
+                    word = tokenized_addressee_scripts[j]
+                    if word not in vocab_dict.keys():
+                        vocab_dict[word] = num_vocab
+                        num_vocab += 1
+                    tokenized_addressee_scripts[j] = vocab_dict[word]
+
+                if len(tokenized_addressee_scripts) < self.params.sentence_max_length-2:
+                    extension = np.zeros(self.params.sentence_max_length-len(tokenized_addressee_scripts)-2)
+                    tokenized_addressee_scripts.extend(extension)
+            
+                # Add EOS & EOT to tokenized_addressee_scripts
+                tokenized_addressee_scripts = [self.EOS] + tokenized_addressee_scripts + [self.EOT] 
+                spkr_adrs_list.append([speakers[i], tokenized_speaker_scripts, speakers[i+1], tokenized_addressee_scripts])
+
+                i = i + 1
+
+            i = i + 1
+        
+        self.vocab_dict = vocab_dict
+
+        return spkr_adrs_list
+
+                
+
+
 
     def train_test_split(self, all_data, p_split=0.9):
         """
