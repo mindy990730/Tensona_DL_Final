@@ -82,6 +82,7 @@ def train(model, train_data):
 def test(model, test_data):
     start_index = 0
     total_acc = 0
+    loss_list = []
 
     while (start_index + params.batch_size) < len(test_data[0]):
 
@@ -97,6 +98,28 @@ def test(model, test_data):
         start_index += params.batch_size
     
     print('=========================Testing Accuracy ', total_acc/np.count_nonzero(test_data[3][0:start_index, :]), "==========================\n")
+
+    show_example(prbs, targets[:,1:])
+    l = tf.reduce_mean(loss_list)
+    perplexity = tf.math.exp(l)
+    print('=========================Perplexity ', perplexity, "==========================\n")
+
+def show_example(probs, labels):
+    
+    # labels = tf.transpose(labels)
+    decoded_vocab_ids = tf.argmax(input=probs, axis=2) 
+    decoded_vocab_ids = tf.transpose(decoded_vocab_ids) # shape = (batch_size, sentence_max_length-1)
+    print(decoded_vocab_ids.shape)
+
+    for row in range(params.batch_size - 5, params.batch_size, 1):
+        sentence = []
+
+        for col in range(0, tf.shape(decoded_vocab_ids)[1], 1):
+            print(row, col)
+            sentence.append(list(data.vocab_dict.keys())[list(data.vocab_dict.values()).index(decoded_vocab_ids[row][col])])
+        
+        print(' '.join(word for word in sentence))
+        print(labels[row],'\n')
 
 
 

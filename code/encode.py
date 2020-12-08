@@ -45,6 +45,8 @@ class encode_model():
 		
 		self.num_vocab = len(list(self.data.vocab_dict.keys())) # Friends: 15105 
 
+		print(self.data_dict[0:5])
+
 		print('num_characters = ', self.num_characters)
 		print('num_vocab = ', self.num_vocab)
 		self.train_data, self.test_data = self.data.train_test_split(self.data_dict, p_split=0.9) # Friends: num_train = 45416
@@ -164,6 +166,8 @@ if __name__ == '__main__':
 		exit()
 		
 	# Initialize model
+
+
 	if sys.argv[1] == "SPEAKER":
 		is_speaker = True
 	elif sys.argv[1] == "SPEAKER_ADDRESSEE":
