@@ -3,6 +3,9 @@ import pickle
 import tensorflow as tf
 from tensorflow.keras import layers 
 from preprocess import Data
+from nltk.translate.bleu_score import sentence_bleu
+import sys
+
 
 class baseline_params():
 	def __init__(self):
@@ -84,11 +87,15 @@ def test(model, test_data):
     total_words = 0
     loss_list = []
     acc_list = []
+    prbs_list = []
+    target_list = []
 
     while (start_index + params.batch_size) < len(test_data[0]):
 
         sources, targets, speakers, addressees = data.read_batch(test_data, start_index, mode='train')
         prbs = model.call(sources, targets[:, :-1])
+        # prbs_list.append(prbs)
+        # target_list.append(targets[:, 1:])
         loss = model.loss_function(prbs, targets[:,1:])
         loss_list.append(loss)
         print('-----------batch ', int(start_index/params.batch_size), ": loss = ", loss, " ---------------\n")
@@ -103,21 +110,40 @@ def test(model, test_data):
     
     print('=========================Testing Accuracy ', tf.reduce_mean(acc_list), "==========================\n")
 
-    show_example(prbs, targets[:,1:])
     l = tf.reduce_sum(loss_list)/total_words
     perplexity = tf.math.exp(l)
     print('=========================Perplexity ', perplexity, "==========================\n")
 
-def show_example(probs, labels):
+    # prbs_list = tf.squeeze(prbs_list)
+    # target_list = tf.squeeze(target_list)
+    generated_list, candidate_list = generate_and_show_example(prbs, targets[:, 1:])
+    print(generated_list[0:5])
+    print(candidate_list[0:5])
+    
+    score_list = []
+
+    for i in range(len(generated_list)):
+        score = sentence_bleu(generated_list[i], candidate_list[i])
+        score_list.append(score)
+
+    print(tf.reduce_mean(score_list))
+
+def generate_and_show_example(probs, labels):
     
     
-    print(labels.shape)
+    
     # labels = tf.transpose(labels)
     decoded_vocab_ids = tf.argmax(input=probs, axis=2) 
     print(decoded_vocab_ids.shape)
+    
     # decoded_vocab_ids = tf.transpose(decoded_vocab_ids) # shape = (batch_size, sentence_max_length-1)
 
-    for row in range(params.batch_size - 5, params.batch_size, 1):
+    print(probs.shape)
+
+    generated_list = []
+    candidate_list = []
+
+    for row in range(len(probs)):
         sentence = []
         correct_sentence = []
 
@@ -126,21 +152,36 @@ def show_example(probs, labels):
             sentence.append(list(data.vocab_dict.keys())[list(data.vocab_dict.values()).index(decoded_vocab_ids[row][col])])
             correct_sentence.append(list(data.vocab_dict.keys())[list(data.vocab_dict.values()).index(labels[row][col])])
         
-        print(' '.join(word for word in sentence))
-        print(' '.join(word for word in correct_sentence))
-        print(labels[row],'\n')
+        generated = ' '.join(word for word in sentence)
+        candidate = ' '.join(word for word in correct_sentence)
+        generated_list.append(generated)
+        candidate_list.append(candidate)
+        # print(labels[row],'\n')
+    
+    return generated_list, candidate_list
 
 
 
 
 if __name__ == '__main__':
 
+    if len(sys.argv) != 2 or sys.argv[1] not in {"FRIENDS", "DIALOGUE"}:
+        print("USAGE: python encode.py <Model Type> <Dataset>")
+        print("<Model Type>: [FRIENDS / DIALOGUE]")
+        exit()
+
     params = baseline_params()
     data = Data(params)
     print('baseline.py: created params and data')
 
-    friends_data = data.friends_tsv(num_seasons=10)
-    data_dict = data.cleanup_and_build_dict(friends_data)
+
+    if sys.argv[1] == "FRIENDS":
+        friends_data = data.friends_tsv(num_seasons=10)
+        data_dict = data.cleanup_and_build_dict(friends_data)
+    elif sys.argv[1] == "DIALOGUE":
+        dialogue_data_dict = data.dialogue_tsv()
+        data_dict = data.build_dialogue_dict(dialogue_data_dict)
+
     num_characters = data.num_characters
     num_vocab = len(list(data.vocab_dict.keys()))
 
