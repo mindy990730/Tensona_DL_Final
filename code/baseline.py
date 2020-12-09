@@ -11,7 +11,7 @@ class baseline_params():
 
 		self.lr_rate = 0.0005
 		self.embed_size = 256
-		self.batch_size = 128
+		self.batch_size = 64
 		self.hidden_sz = 512
 		self.start_halve = 5
 		self.dropout = 0.1
@@ -20,7 +20,7 @@ class baseline_params():
 		self.addressee_mode = True
 		
 		self.sentence_max_length = 20
-		self.max_epochs = 1
+		self.max_epochs = 5
 
 class baseline_model(tf.keras.Model):
     def __init__(self, num_vocab, params):
@@ -81,44 +81,53 @@ def train(model, train_data):
 
 def test(model, test_data):
     start_index = 0
-    total_acc = 0
+    total_words = 0
     loss_list = []
+    acc_list = []
 
     while (start_index + params.batch_size) < len(test_data[0]):
 
         sources, targets, speakers, addressees = data.read_batch(test_data, start_index, mode='train')
         prbs = model.call(sources, targets[:, :-1])
         loss = model.loss_function(prbs, targets[:,1:])
+        loss_list.append(loss)
         print('-----------batch ', int(start_index/params.batch_size), ": loss = ", loss, " ---------------\n")
         acc = model.accuracy_function(prbs, targets[:,1:])
+        acc_list.append(acc)
         print('-----------batch ', int(start_index/params.batch_size), ": acc = ", acc, " ---------------\n")
         batch_total = np.count_nonzero(targets)
-        print("batch_total_words: ", batch_total)
-        total_acc = total_acc + acc * batch_total
+        total_words = total_words + batch_total
+        # print("batch_total_words: ", batch_total)
+        # total_acc = total_acc + acc * batch_total
         start_index += params.batch_size
     
-    print('=========================Testing Accuracy ', total_acc/np.count_nonzero(test_data[3][0:start_index, :]), "==========================\n")
+    print('=========================Testing Accuracy ', tf.reduce_mean(acc_list), "==========================\n")
 
     show_example(prbs, targets[:,1:])
-    l = tf.reduce_mean(loss_list)
+    l = tf.reduce_sum(loss_list)/total_words
     perplexity = tf.math.exp(l)
     print('=========================Perplexity ', perplexity, "==========================\n")
 
 def show_example(probs, labels):
     
+    
+    print(labels.shape)
     # labels = tf.transpose(labels)
     decoded_vocab_ids = tf.argmax(input=probs, axis=2) 
-    decoded_vocab_ids = tf.transpose(decoded_vocab_ids) # shape = (batch_size, sentence_max_length-1)
     print(decoded_vocab_ids.shape)
+    # decoded_vocab_ids = tf.transpose(decoded_vocab_ids) # shape = (batch_size, sentence_max_length-1)
 
     for row in range(params.batch_size - 5, params.batch_size, 1):
         sentence = []
+        correct_sentence = []
 
         for col in range(0, tf.shape(decoded_vocab_ids)[1], 1):
-            print(row, col)
+
             sentence.append(list(data.vocab_dict.keys())[list(data.vocab_dict.values()).index(decoded_vocab_ids[row][col])])
+            correct_sentence.append(list(data.vocab_dict.keys())[list(data.vocab_dict.values()).index(labels[row][col])])
         
         print(' '.join(word for word in sentence))
+        print(' '.join(word for word in correct_sentence))
         print(labels[row],'\n')
 
 
