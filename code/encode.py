@@ -157,7 +157,7 @@ class encode_model():
 		grid(True)
 		show()
 
-	def calculate_bleu_score (self, reference, prediction): 
+	def calc_bleu_score(self, reference, prediction): 
 		"""
 
 		Caclculates the BLEU score for a given sentence
