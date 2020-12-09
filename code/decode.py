@@ -5,8 +5,9 @@ import os
 import sys
 from lstm_model import *
 from encode import *
+from preprocess import Data
 
-class beam_decoder(lstm_model):
+class decode_model(lstm_model):
     def call(self, batched_source, batched_target, speaker_list, addressee_list, initial_state):
         """
         Runs the decoder model on one batch of source & target inputs
@@ -25,6 +26,7 @@ class beam_decoder(lstm_model):
         source_ebd = tf.nn.embedding_lookup(self.source_embedding, batched_source)
         encoded_outputs, initial_state = self.encoder(source_ebd, initial_state=initial_state)
         losses = []
+        probs_list = []
         
         for i in range(tf.shape(batched_target)[1]-1):
             target_ebd = tf.nn.embedding_lookup(self.target_embedding, batched_target[:, i]) # shape = (batch_size, 1, embed_size)
@@ -32,15 +34,17 @@ class beam_decoder(lstm_model):
             labels = tf.squeeze(batched_target[:, i+1]) 
             l = self.loss_func(probs, labels)
             losses.append(l)
+            probs_list.append(probs)
         losses = tf.convert_to_tensor(losses) 
         loss = tf.reduce_sum(losses)
+        probs_list = tf.convert_to_tensor(probs_list)
 
-        # Get the start point of beam search
-        start=tf.nn.embedding_lookup(self.target_embedding, batched_target[:,0])
-        init_probs,init_state= self.decoder(encoded_outputs, initial_state, start, speaker_list, addressee_list)
+        # # Get the start point of beam search
+        # start=tf.nn.embedding_lookup(self.target_embedding, batched_target[:,0])
+        # init_probs,init_state= self.decoder(encoded_outputs, initial_state, start, speaker_list, addressee_list)
 
-        # Perform beam search
-        probs_list = self.beam_search(init_probs, init_state, encoded_outputs,speaker_list, addressee_list)
+        # # Perform beam search
+        # probs_list = self.beam_search(init_probs, init_state, encoded_outputs,speaker_list, addressee_list)
         return losses, probs_list
 
     def beam_search(self,init_probs, init_state, encoded_outputs, speaker_list, addressee_list):
@@ -110,7 +114,8 @@ class beam_decoder(lstm_model):
         # Rank the candidates then return the top k candidates
         best_cand = sorted(final_cand, key=lambda tup:tup[1])[:self.beam_size]
         # TODO: reshape to (sentence_max_length-1, batch_size, num_vocab)
-        return best_cand
+        # return best_cand
+        pass
     
     def get_score(self, candidate):
         """
@@ -138,25 +143,103 @@ class beam_decoder(lstm_model):
 
         # TODO: figure out correct dimensions 
         top_candidates = tf.transpose(top_candidates, perm=[0, 2, 1])
-        return top_candidates 
-    
-
-class decode_model(encode_model):
-    def __init__(self, params, data, is_speaker):
-        self.params = params
-        self.model = beam_decoder(self.params, self.num_vocab, self.num_characters, is_speaker)
-    
-    def call(self):
+        # return top_candidates 
         pass
+    
+class decode_params():
+	def __init__(self):
+		self.data_folder_path = '../data'
+		self.friends_output_file_name = 'output.csv'
+
+		self.lr_rate = 0.0005
+		self.embed_size = 256
+		self.batch_size = 128
+		self.hidden_sz = 512
+		self.start_halve = 5
+		self.dropout = 0.1
+
+		self.speaker_mode = True
+		self.addressee_mode = True
+		
+		self.sentence_max_length = 20
+		self.max_epochs = 1
+
+class decode_model(tf.keras.Model):
+    def __init__(self, params, data, is_speaker, is_friends):
+        # self.model = beam_decoder(self.params, self.num_vocab, self.num_characters, is_speaker)
+        self.is_speaker = is_speaker
+        self.is_friends = is_friends
+        if is_friends==True:
+            friends_data_dict = self.data.friends_tsv(num_seasons=10)
+            self.data_dict = self.data.cleanup_and_build_dict(friends_data_dict)
+            self.num_characters = self.data.num_characters
+        else:
+            dialogue_data_dict = self.data.dialogue_tsv()
+            self.data_dict = self.data.build_dialogue_dict(dialogue_data_dict)
+            self.num_characters = self.data.num_characters
+        self.params = params
+        self.model = decode_model(params, num_vocab, num_characters, self.is_speaker)
+
+	# def read_encoder(self):
+	# 	self.voc_decode = dict()
+	# 	with open(path.join(self.params.data_folder,self.params.dictPath),'r') as doc:
+	# 		for line in doc:
+	# 			self.voc_decode[len(self.voc_decode)] = line.strip()
+
+	# def id2word(self, ids):
+	# 	### For raw-word data:
+	# 	# self.voc_decode[len(self.voc_decode)] = '[unknown]'
+	# 	tokens = []
+	# 	for i in ids:
+	# 		try:
+	# 			word = self.voc_decode[int(i)-self.params.special_word]
+	# 			tokens.append(word)
+	# 		except KeyError:
+	# 			break
+	# 	return " ".join(tokens)
+    
 
     def decode(self):
-        # output sentence
-        pass
+		num_epochs = 0
+		while num_epochs < self.params.max_epochs:
+			start_index = 0
+			while (start_index + self.params.batch_size) < len(self.test_data[0]):
+				# Read in batched test_data
+				sources, targets, speakers, addressees = self.data.read_batch(self.test_data, start_index, mode='test')
 
+if __name__ == '__main__':
 
-    # params = encoder_params()
-    # model = decode_model(params, data,is_speaker)
-    # model.decode()
-    
-    # model = beam_decoder(params, 20,20, is_speaker)
-    # model.call(batched_source, batched_target, speaker_list, addressee_list, initial_state)
+    params = decode_params()
+    data = Data(params)
+    print('decoder.py: created params and data')
+
+    friends_data = data.friends_tsv(num_seasons=10)
+    data_dict = data.cleanup_and_build_dict(friends_data)
+    num_characters = data.num_characters
+    num_vocab = len(list(data.vocab_dict.keys()))
+
+    if len(sys.argv) != 3 or sys.argv[1] not in {"SPEAKER", "SPEAKER_ADDRESSEE"} or sys.argv[2] not in {"FRIENDS", "DIALOGUE"}:
+		print("USAGE: python decode.py <Model Type> <Dataset>")
+		print("<Model Type>: [SPEAKER / SPEAKER_ADDRESSEE]")
+		print("<Model Type>: [FRIENDS / DIALOGUE]")
+		exit()
+
+    if sys.argv[1] == "SPEAKER":
+		is_speaker = True
+    elif sys.argv[1] == "SPEAKER_ADDRESSEE":
+		is_speaker = False
+
+    self.model = decode_model(params, data, is_speaker)
+
+    # self.ReadDict()
+    # self.Data=data(self.params,self.voc)
+    # self.Model = lstm_decoder(self.params,len(self.voc),self.Data.EOT)
+    # print('decode.py: created decoder')
+    # self.readModel(self.params.model_folder,self.params.model_name)
+    # self.Model.to(self.device)
+    # self.ReadDictDecode()
+
+    # self.output=path.join(self.params.output_folder,self.params.log_file)
+    # if self.output!="":
+    #     with open(self.output,"w") as selfoutput:
+    #         selfoutput.write("")

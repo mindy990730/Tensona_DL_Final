@@ -10,6 +10,7 @@ import tensorflow as tf
 import os
 import sys
 from decode import *
+from nltk.translate.bleu_score import sentence_bleu
 
 class encoder_params():
 	def __init__(self):
@@ -156,6 +157,19 @@ class encode_model():
 		grid(True)
 		show()
 
+	def calculate_bleu_score (self, reference, prediction): 
+		"""
+
+		Caclculates the BLEU score for a given sentence
+
+		:param reference: a list of reference sentences where each reference is a list of tokens
+		:param prediction: a list of predicted sentences where each prediction is a list of tokens
+		"""
+		# predicted_response & true response are both lists: e.g.
+		# reference = [['the', 'quick', 'brown', 'fox', 'jumped', 'over', 'the', 'lazy', 'dog']]
+		# predicted_response = ['the', 'fast', 'brown', 'fox', 'jumped', 'over', 'the', 'lazy', 'dog']
+		score = sentence_bleu(reference, prediction)
+		return score
 
 if __name__ == '__main__':
 	
@@ -166,8 +180,6 @@ if __name__ == '__main__':
 		exit()
 		
 	# Initialize model
-
-
 	if sys.argv[1] == "SPEAKER":
 		is_speaker = True
 	elif sys.argv[1] == "SPEAKER_ADDRESSEE":
