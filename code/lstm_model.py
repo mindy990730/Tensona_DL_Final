@@ -209,7 +209,6 @@ class lstm_model(tf.keras.Model):
         :return: scalar tensor of accuracy of the batch between 0 and 1     
         """
         #TODO: Try beam search
-        # decoded_vocabs = tf.nn.ctc_beam_search_decoder(input = probs, sequence_length = 20, beam_width=200, top_paths=200)
         # Hardcoded
         decoded_vocabs = tf.cast(tf.argmax(input=probs, axis=2), dtype=tf.int64)
         accuracy = tf.reduce_mean((tf.cast(tf.equal(decoded_vocabs, labels), dtype=tf.float32)))
