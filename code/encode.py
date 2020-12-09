@@ -9,8 +9,7 @@ import linecache
 import tensorflow as tf
 import os
 import sys
-from decode import *
-from nltk.translate.bleu_score import sentence_bleu
+from nltk.translate.bleu_score import sentence_bleu, corpus_bleu
 
 class encoder_params():
 	def __init__(self):
@@ -132,7 +131,8 @@ class encode_model():
 				sentence.append(list(self.data.vocab_dict.keys())[list(self.data.vocab_dict.values()).index(decoded_vocab_ids[row][col])])
 			print(' '.join(word for word in sentence))
 			print(labels[row],'\n')
-		pass
+			print(sentence_bleu_score(sentence,labels[row]))
+		# pass
 
 	def visualize_data(self, loss, mode='loss'):
 		"""
@@ -157,7 +157,7 @@ class encode_model():
 		grid(True)
 		show()
 
-	def calc_bleu_score(self, reference, prediction): 
+	def sentence_bleu_score(self, reference, prediction): 
 		"""
 
 		Caclculates the BLEU score for a given sentence
@@ -165,10 +165,24 @@ class encode_model():
 		:param reference: a list of reference sentences where each reference is a list of tokens
 		:param prediction: a list of predicted sentences where each prediction is a list of tokens
 		"""
-		# predicted_response & true response are both lists: e.g.
+		# e.g.
 		# reference = [['the', 'quick', 'brown', 'fox', 'jumped', 'over', 'the', 'lazy', 'dog']]
 		# predicted_response = ['the', 'fast', 'brown', 'fox', 'jumped', 'over', 'the', 'lazy', 'dog']
 		score = sentence_bleu(reference, prediction)
+		return score
+
+	def corpus_bleu_score(self, reference, prediction): 
+		"""
+
+		Caclculates the BLEU score for a given corpus
+
+		:param reference: a list of documents where each document is a list of references and each alternative reference is a list of tokens
+		:param prediction: a list where each document is a list of tokens, e.g. a list of lists of tokens
+		"""
+		# e.g.
+		# reference = [[['this', 'is', 'a', 'test'], ['this', 'is' 'test']]]
+		# predicted_response = [['this', 'is', 'a', 'test']]
+		score = corpus_bleu(reference, prediction)
 		return score
 
 if __name__ == '__main__':

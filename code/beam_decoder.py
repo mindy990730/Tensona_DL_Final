@@ -7,7 +7,7 @@ from lstm_model import *
 from encode import *
 from preprocess import Data
 
-class lstm_decoder(lstm_model):
+class beam_decoder(lstm_model):
     def call(self, batched_source, batched_target, speaker_list, addressee_list, initial_state):
         """
         Runs the decoder model on one batch of source & target inputs
@@ -34,17 +34,17 @@ class lstm_decoder(lstm_model):
             labels = tf.squeeze(batched_target[:, i+1]) 
             l = self.loss_func(probs, labels)
             losses.append(l)
-            probs_list.append(probs)
+            # probs_list.append(probs)
         losses = tf.convert_to_tensor(losses) 
         loss = tf.reduce_sum(losses)
-        probs_list = tf.convert_to_tensor(probs_list)
+        # probs_list = tf.convert_to_tensor(probs_list)
 
-        # # Get the start point of beam search
-        # start=tf.nn.embedding_lookup(self.target_embedding, batched_target[:,0])
-        # init_probs,init_state= self.decoder(encoded_outputs, initial_state, start, speaker_list, addressee_list)
+        # Get the start point of beam search
+        start=tf.nn.embedding_lookup(self.target_embedding, batched_target[:,0])
+        init_probs,init_state= self.decoder(encoded_outputs, initial_state, start, speaker_list, addressee_list)
 
-        # # Perform beam search
-        # probs_list = self.beam_search(init_probs, init_state, encoded_outputs,speaker_list, addressee_list)
+        # Perform beam search
+        probs_list = self.beam_search(init_probs, init_state, encoded_outputs,speaker_list, addressee_list)
         return losses, probs_list
 
     def beam_search(self,init_probs, init_state, encoded_outputs, speaker_list, addressee_list):
@@ -123,20 +123,6 @@ class lstm_decoder(lstm_model):
         # score = 1 + 2 + 3
         pass
 
-    def tf_beam_search(self, initial_state, beam_width):
-        # TODO: figure out correct input 
-        top_candidates, logProb =  tf.nn.ctc_beam_search_decoder(inputs = initial_state, 
-                sequence_length = ([self.sentence_max_length]*self.batch_size), beam_width=self.beam_size, 
-                top_paths=self.beam_size)
-
-        print("\nTOP CANDIDATES = ",top_candidates)
-        print("\nTOP CANDIDATES SHAPE = ",tf.shape(top_candidates))
-
-        # TODO: figure out correct dimensions 
-        top_candidates = tf.transpose(top_candidates, perm=[0, 2, 1])
-        # return top_candidates 
-        pass
-    
 class decode_params():
 	def __init__(self):
 		self.data_folder_path = '../data'
@@ -167,13 +153,13 @@ class decode_model(tf.keras.Model):
             self.num_characters = self.data.num_characters
 
         self.params = params
-        self.model = lstm_decoder(params, num_vocab, num_characters, self.is_speaker)
+        self.model = beam_decoder(params, num_vocab, num_characters, self.is_speaker)
 
 	# TODO: read from encoder & turn ID to words
     
     def decode(self):
 
-        #TODO: open training file?
+        #TODO: open training file
 
 		num_epochs = 0
 		while num_epochs < self.params.max_epochs:
