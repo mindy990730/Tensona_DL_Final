@@ -54,7 +54,6 @@ class lstm_source(tf.keras.Model):
         # print('\n\nsource dense_2 output = ', output)
 
         output = self.dense_2(output)
-        # print('\n\nsource dense_1 output = ', output)
         return output, initial_state
 
 
@@ -149,6 +148,9 @@ class lstm_model(tf.keras.Model):
         self.source_embedding = tf.random.normal([num_vocab, params.embed_size], stddev=.1, dtype=tf.float32)
         self.target_embedding = tf.random.normal([num_vocab, params.embed_size], stddev=.1, dtype=tf.float32)
         self.optimizer = tf.keras.optimizers.Adam(learning_rate = params.lr_rate)
+        self.beam_size = 200
+        self.sentence_max_length = 20
+        self.batch_size = 64
         # print('lstm_model is built!!!!!!!!!!!!!\n\n')
 
     def call(self, batched_source, batched_target, speaker_list, addressee_list, initial_state):
@@ -208,8 +210,7 @@ class lstm_model(tf.keras.Model):
         """
         #TODO: Try beam search
         # decoded_vocabs = tf.nn.ctc_beam_search_decoder(input = probs, sequence_length = 20, beam_width=200, top_paths=200)
-        decoded_vocabs = beam_search(probs,200)
         # Hardcoded
-        # decoded_vocabs = tf.cast(tf.argmax(input=probs, axis=2), dtype=tf.int64)
+        decoded_vocabs = tf.cast(tf.argmax(input=probs, axis=2), dtype=tf.int64)
         accuracy = tf.reduce_mean((tf.cast(tf.equal(decoded_vocabs, labels), dtype=tf.float32)))
         return accuracy
