@@ -9,6 +9,7 @@ import linecache
 import tensorflow as tf
 import os
 import sys
+from matplotlib import pyplot as plt
 from nltk.translate.bleu_score import sentence_bleu, corpus_bleu
 
 class persona_params():
@@ -17,6 +18,9 @@ class persona_params():
 		self.friends_output_file_name = 'friends_transcripts.csv'
 
 		self.lr_rate = 0.0005
+		self.decay_steps = 10000
+		self.decay_rate = 0.97
+
 		self.embed_size = 256
 		self.batch_size = 64
 		self.hidden_sz = 512
@@ -27,7 +31,7 @@ class persona_params():
 		self.addressee_mode = True
 		
 		self.sentence_max_length = 20
-		self.max_epochs = 1
+		self.max_epochs = 3
 
 class persona_model():
 	def __init__(self, params, data, is_speaker, is_friends):
@@ -52,6 +56,15 @@ class persona_model():
 		self.train_data, self.test_data = self.data.train_test_split(self.data_dict, p_split=0.9) # Friends: num_train = 45416
 		self.model = lstm_model(self.params, self.num_vocab, self.num_characters, is_speaker)
 		# self.model = beam_decoder(self.params, self.num_vocab, self.num_characters, is_speaker)
+		self.checkpoint = tf.train.Checkpoint(optimizer=self.model.optimizer, model=self.model, step = tf.Variable(1))
+		if is_speaker and is_friends:
+			self.manager = tf.train.CheckpointManager(self.checkpoint, '../tmp/s_F', max_to_keep = 5)
+		elif is_speaker and not is_friends:			
+			self.manager = tf.train.CheckpointManager(self.checkpoint, '../tmp/s_D', max_to_keep = 5)
+		elif not is_speaker and is_friends:
+			self.manager = tf.train.CheckpointManager(self.checkpoint, '../tmp/s_a_F', max_to_keep = 5)
+		else:
+			self.manager = tf.train.CheckpointManager(self.checkpoint, '../tmp/s_a_D', max_to_keep = 5)
 
 
 	def train(self):
@@ -60,11 +73,15 @@ class persona_model():
 		while num_epochs < self.params.max_epochs:
 			print('=========================EPOCH ', num_epochs, "==========================\n")
 			# Adjust learning rate
-			if num_epochs > self.params.start_halve:
-				self.params.lr_rate *= 0.5
+			# if num_epochs > self.params.start_halve:
+			# 	self.params.lr_rate *= 0.5
 			# Loop through all train_data in batches
 			start_index = 0
 			while (start_index + self.params.batch_size) < len(self.train_data[0]):
+				if self.manager.latest_checkpoint:
+					print("Restored from {}".format(self.manager.latest_checkpoint))
+				else:
+					print("Initializing from scratch.")
 				sources, targets, speakers, addressees = self.data.read_batch(self.train_data, start_index, mode='train')
 				with tf.GradientTape() as tape:
 					loss, probs = self.model.call(sources, targets, speakers, addressees, initial_state)
@@ -73,11 +90,17 @@ class persona_model():
 				# print('       gradients = ', gradients)
 				self.model.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
 				start_index += self.params.batch_size
+				if int(self.checkpoint.step) % 10 == 0:
+					save_path = self.manager.save()
+					print("Saved checkpoint for step ", format(int(self.checkpoint.step)), ": ", save_path, )
+				if start_index==0:
+					print(self.model.encoder.summary())
+					print(self.model.decoder.summary())
 			# Increment for next epoch
 			num_epochs += 1
-		pass
+		return initial_state
 
-	def test(self):
+	def test(self, initial_state):
 		loss_list = []
 		accuracy_list = []
 		num_epochs = 0
@@ -88,7 +111,7 @@ class persona_model():
 				# Read in batched test_data
 				sources, targets, speakers, addressees = self.data.read_batch(self.test_data, start_index, mode='train')
 				# Forward pass to get loss
-				loss, probs = self.model.call(sources, targets, speakers, addressees)
+				loss, probs = self.model.call(sources, targets, speakers, addressees, initial_state)
 				loss_list.append(loss)
 				# Calculate accuracy 
 				labels = targets[:, 1:] # shape = (batch_size, sentence_max_length-1)
@@ -127,12 +150,14 @@ class persona_model():
 		decoded_vocab_ids = tf.transpose(decoded_vocab_ids) # shape = (batch_size, sentence_max_length-1)
 		for row in range(self.params.batch_size - 5, self.params.batch_size, 1):
 			sentence = []
+			ans = []
 			for col in range(0, tf.shape(decoded_vocab_ids)[1], 1):
 				sentence.append(list(self.data.vocab_dict.keys())[list(self.data.vocab_dict.values()).index(decoded_vocab_ids[row][col])])
+				ans.append(list(self.data.vocab_dict.keys())[list(self.data.vocab_dict.values()).index(labels[row][col])])
 			print(' '.join(word for word in sentence))
-			print(labels[row],'\n')
-			print(sentence_bleu_score(sentence,labels[row]))
-		# pass
+			print(' '.join(word for word in ans))
+			print(self.sentence_bleu_score(sentence,labels[row]))
+		pass
 
 	def visualize_data(self, loss, mode='loss'):
 		"""
@@ -142,20 +167,20 @@ class persona_model():
 		:param loss: List of loss from all episodes
 		"""
 
-		x_values = arange(0, len(loss), 1)
+		x_values = np.arange(0, len(loss), 1)
 		y_values = loss
-		plot(x_values, y_values)
-		xlabel('Batch')
+		plt.plot(x_values, y_values)
+		plt.xlabel('Batch')
 		if mode=='loss':
-			ylabel('loss')
-			title('Loss by Batch')
+			plt.ylabel('loss')
+			plt.title('Loss by Batch')
 		elif mode=='accuracy':
-			ylabel('accuracy')
-			title('Accuracy by Batch')
+			plt.ylabel('accuracy')
+			plt.title('Accuracy by Batch')
 		else:
 			print('graph cannot be shown')
-		grid(True)
-		show()
+		plt.grid(True)
+		plt.show()
 
 	def sentence_bleu_score(self, reference, prediction): 
 		"""
@@ -211,9 +236,9 @@ if __name__ == '__main__':
 	print('personal_model.py: created params and data')
 	persona_m = persona_model(params, data, is_speaker, is_friends)
 	print('personal_model.py: created persona_model')
-	persona_m.train()
+	initial_state = persona_m.train()
 	print('personal_model.py: finished training persona_model')
-	perplexity, acc = persona_m.test()
+	perplexity, acc = persona_m.test(initial_state)
 	print('test perplexity = ', perplexity)
 	print('test accuracy = ', acc)
 	end = time.time()
@@ -221,5 +246,8 @@ if __name__ == '__main__':
 	minutes_passed = math.floor(sec_passed / 60)
 	sec_left = sec_passed % 60
 	print('RUNTIME = ', minutes_passed,' minutes ', sec_left, 'seconds\n')
+	persona_m.model.encoder.save_weights('../saved_weights/en_weights.tf', save_format='tf')
+	persona_m.model.decoder.save_weights('../saved_weights/de_weights.tf', save_format='tf')
+	
 	# model = (args)
 	# model.train()

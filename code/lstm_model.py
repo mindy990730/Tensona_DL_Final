@@ -147,7 +147,8 @@ class lstm_model(tf.keras.Model):
         self.decoder = lstm_target(params, num_vocab, num_characters, self.is_speaker)
         self.source_embedding = tf.random.normal([num_vocab, params.embed_size], stddev=.1, dtype=tf.float32)
         self.target_embedding = tf.random.normal([num_vocab, params.embed_size], stddev=.1, dtype=tf.float32)
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate = params.lr_rate)
+        self.lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(params.lr_rate, params.decay_steps, params.decay_rate, staircase=False)
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate = self.lr_schedule)
         self.beam_size = 200
         self.sentence_max_length = 20
         self.batch_size = 64
@@ -169,7 +170,6 @@ class lstm_model(tf.keras.Model):
 
         """
         source_ebd = tf.nn.embedding_lookup(self.source_embedding, batched_source) # shape = (batch_size, sentence_max_length, embed_size)
-        # print('\nsource embedding = ', source_ebd)
         # run LSTM encoder on the source sentence
         encoded_output, initial_state = self.encoder(source_ebd, initial_state=initial_state)
         losses = []
