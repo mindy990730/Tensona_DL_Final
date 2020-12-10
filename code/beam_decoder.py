@@ -4,7 +4,7 @@ from tensorflow.keras import Model
 import os
 import sys
 from lstm_model import *
-from encode import *
+from personal_model import *
 from preprocess import Data
 
 class beam_decoder(lstm_model):
@@ -180,7 +180,7 @@ if __name__ == '__main__':
     num_vocab = len(list(data.vocab_dict.keys()))
 
     if len(sys.argv) != 3 or sys.argv[1] not in {"SPEAKER", "SPEAKER_ADDRESSEE"} or sys.argv[2] not in {"FRIENDS", "DIALOGUE"}:
-		print("USAGE: python encode.py <Model Type> <Dataset>")
+		print("USAGE: python beam_decoder.py <Model Type> <Dataset>")
 		print("<Model Type>: [SPEAKER / SPEAKER_ADDRESSEE]")
 		print("<Model Type>: [FRIENDS / DIALOGUE]")
 		exit()

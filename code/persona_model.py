@@ -11,7 +11,7 @@ import os
 import sys
 from nltk.translate.bleu_score import sentence_bleu, corpus_bleu
 
-class encoder_params():
+class persona_params():
 	def __init__(self):
 		self.data_folder_path = '../data'
 		self.friends_output_file_name = 'friends_transcripts.csv'
@@ -29,7 +29,7 @@ class encoder_params():
 		self.sentence_max_length = 20
 		self.max_epochs = 1
 
-class encode_model():
+class persona_model():
 	def __init__(self, params, data, is_speaker, is_friends):
 		self.params = params
 		self.data = data
@@ -188,7 +188,7 @@ class encode_model():
 if __name__ == '__main__':
 	
 	if len(sys.argv) != 3 or sys.argv[1] not in {"SPEAKER", "SPEAKER_ADDRESSEE"} or sys.argv[2] not in {"FRIENDS", "DIALOGUE"}:
-		print("USAGE: python encode.py <Model Type> <Dataset>")
+		print("USAGE: python personal_model.py <Model Type> <Dataset>")
 		print("<Model Type>: [SPEAKER / SPEAKER_ADDRESSEE]")
 		print("<Model Type>: [FRIENDS / DIALOGUE]")
 		exit()
@@ -206,14 +206,14 @@ if __name__ == '__main__':
 
 
 	start = time.time()
-	params = encoder_params()
+	params = persona_params()
 	data = Data(params)
-	print('encode.py: created params and data')
-	encode_m = encode_model(params, data, is_speaker, is_friends)
-	print('encode.py: created encode_model')
-	encode_m.train()
-	print('encode.py: finished training encode_model')
-	perplexity, acc = encode_m.test()
+	print('personal_model.py: created params and data')
+	persona_m = persona_model(params, data, is_speaker, is_friends)
+	print('personal_model.py: created persona_model')
+	persona_m.train()
+	print('personal_model.py: finished training persona_model')
+	perplexity, acc = persona_m.test()
 	print('test perplexity = ', perplexity)
 	print('test accuracy = ', acc)
 	end = time.time()
