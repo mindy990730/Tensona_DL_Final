@@ -46,7 +46,10 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="/Users/mindyli/Desktop/Brown/2020Fall (Semester 5)/CSCI1470-Deep Learning/Tensona_DL_Final/env"
+VIRTUAL_ENV='/Users/mindyli/Desktop/Brown/2020Fall (Semester 5)/CSCI1470-Deep Learning/Tensona_DL_Final/env'
+if ([ "$OSTYPE" = "cygwin" ] || [ "$OSTYPE" = "msys" ]) && $(command -v cygpath &> /dev/null) ; then
+    VIRTUAL_ENV=$(cygpath -u "$VIRTUAL_ENV")
+fi
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"

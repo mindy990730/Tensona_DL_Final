@@ -38,7 +38,7 @@ class Data():
                             transcript=[]
                             )
         print('Loading seasons...')
-        for season_index in range(1, num_seasons):
+        for season_index in range(1, 1+num_seasons):
             season_index = '0%d'%season_index if season_index <10 else str(season_index)
             json_file_path = self.folder_path + '/friends_season_' + str(season_index)+'.json'
             with open(json_file_path, 'r') as json_file:

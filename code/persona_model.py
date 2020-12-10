@@ -10,6 +10,7 @@ import tensorflow as tf
 import os
 import sys
 from matplotlib import pyplot as plt
+import nltk
 from nltk.translate.bleu_score import sentence_bleu, corpus_bleu
 
 class persona_params():
@@ -39,7 +40,7 @@ class persona_model():
 		self.data = data
 
 		if is_friends==True:
-			friends_data_dict = self.data.friends_tsv(num_seasons=10)
+			friends_data_dict = self.data.friends_tsv(num_seasons=1)
 			self.data_dict = self.data.cleanup_and_build_dict(friends_data_dict)
 			self.num_characters = self.data.num_characters
 		else:
@@ -89,13 +90,14 @@ class persona_model():
 				gradients = tape.gradient(loss, self.model.trainable_variables)
 				# print('       gradients = ', gradients)
 				self.model.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
-				start_index += self.params.batch_size
+				self.checkpoint.step.assign_add(1)
 				if int(self.checkpoint.step) % 10 == 0:
 					save_path = self.manager.save()
 					print("Saved checkpoint for step ", format(int(self.checkpoint.step)), ": ", save_path, )
 				if start_index==0:
 					print(self.model.encoder.summary())
 					print(self.model.decoder.summary())
+				start_index += self.params.batch_size
 			# Increment for next epoch
 			num_epochs += 1
 		return initial_state

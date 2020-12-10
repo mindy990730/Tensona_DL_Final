@@ -1,5 +1,5 @@
 #!/bin/sh
-'''exec' "/Users/mindyli/Desktop/Brown/2020Fall (Semester 5)/CSCI1470-Deep Learning/Tensona_DL_Final/env/bin/python3.7" "$0" "$@"
+'''exec' "/Users/mindyli/Desktop/Brown/2020Fall (Semester 5)/CSCI1470-Deep Learning/Tensona_DL_Final/env/bin/python" "$0" "$@"
 ' '''
 # -*- coding: utf-8 -*-
 import re
