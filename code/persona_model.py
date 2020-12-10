@@ -18,12 +18,12 @@ class persona_params():
 		self.data_folder_path = '../data'
 		self.friends_output_file_name = 'friends_transcripts.csv'
 
-		self.lr_rate = 0.0005
+		self.lr_rate = 0.0001
 		self.decay_steps = 10000
 		self.decay_rate = 0.97
 
 		self.embed_size = 256
-		self.batch_size = 64
+		self.batch_size = 128
 		self.hidden_sz = 512
 		self.start_halve = 5
 		self.dropout = 0.1
@@ -32,7 +32,9 @@ class persona_params():
 		self.addressee_mode = True
 		
 		self.sentence_max_length = 20
-		self.max_epochs = 3
+		self.max_epochs = 5
+		self.EOS = 0 
+		self.EOT = 1 
 
 class persona_model():
 	def __init__(self, params, data, is_speaker, is_friends):
@@ -40,7 +42,7 @@ class persona_model():
 		self.data = data
 
 		if is_friends==True:
-			friends_data_dict = self.data.friends_tsv(num_seasons=1)
+			friends_data_dict = self.data.friends_tsv(num_seasons=2)
 			self.data_dict = self.data.cleanup_and_build_dict(friends_data_dict)
 			self.num_characters = self.data.num_characters
 		else:
@@ -68,7 +70,7 @@ class persona_model():
 			self.manager = tf.train.CheckpointManager(self.checkpoint, '../tmp/s_a_D', max_to_keep = 5)
 
 
-	def train(self):
+	def train(self, is_test):
 		num_epochs = 0
 		initial_state = None
 		while num_epochs < self.params.max_epochs:
@@ -78,6 +80,10 @@ class persona_model():
 			# 	self.params.lr_rate *= 0.5
 			# Loop through all train_data in batches
 			start_index = 0
+			if os.path.isdir('../saved_weights'):
+				self.model.encoder.load_weights('../saved_weights/en_weights.tf')
+				self.model.decoder.load_weights('../saved_weights/de_weights.tf')
+				print('Loaded existing weights.')
 			while (start_index + self.params.batch_size) < len(self.train_data[0]):
 				if self.manager.latest_checkpoint:
 					print("Restored from {}".format(self.manager.latest_checkpoint))
@@ -98,6 +104,8 @@ class persona_model():
 					print(self.model.encoder.summary())
 					print(self.model.decoder.summary())
 				start_index += self.params.batch_size
+				if is_test:
+					return initial_state
 			# Increment for next epoch
 			num_epochs += 1
 		return initial_state
@@ -106,6 +114,7 @@ class persona_model():
 		loss_list = []
 		accuracy_list = []
 		num_epochs = 0
+		valid_words = []
 		while num_epochs < self.params.max_epochs:
 			start_index = 0
 			while (start_index + self.params.batch_size) < len(self.test_data[0]):
@@ -115,6 +124,16 @@ class persona_model():
 				# Forward pass to get loss
 				loss, probs = self.model.call(sources, targets, speakers, addressees, initial_state)
 				loss_list.append(loss)
+				#Count valid words
+				mask = np.ones((self.params.batch_size, self.params.sentence_max_length), dtype=int)
+				for row in range(self.params.batch_size):
+					for col in range(self.params.sentence_max_length):
+						if targets[row][col]==self.params.EOS or targets[row][col]==self.params.EOT:
+							mask[row][col]=0
+				mask = tf.convert_to_tensor(mask, dtype=tf.float32)
+				# Compute number of words in this batch
+				num_valid_words = tf.reduce_sum(mask)
+				valid_words.append(num_valid_words)
 				# Calculate accuracy 
 				labels = targets[:, 1:] # shape = (batch_size, sentence_max_length-1)
 				labels = tf.transpose(labels) # shape = (sentence_max_length-1, batch_size)
@@ -130,15 +149,16 @@ class persona_model():
 				self.show_example(probs, labels)
 		self.visualize_data(loss_list,mode='loss')
 		self.visualize_data(accuracy_list, mode='accuracy')
-		l = tf.reduce_mean(loss_list)
+		# Compute per-word perplexity
+		total_words = tf.reduce_sum(valid_words)
+		l = tf.reduce_sum(loss_list)
+		l = tf.divide(l, total_words)
 		perplexity = tf.math.exp(l)
-		acc = tf.reduce_mean(accuracy_list)
+		acc = tf.reduce_sum(accuracy_list)
+		acc = tf.divide(acc, total_words)
 		return perplexity, acc
 
-	#TODO: Save the trained model so that it can be used in decoder
-	def save_model(self):
-		pass
-	
+
 	def show_example(self, probs, labels):
 		"""
         Show examples of predicted response vs. true response
@@ -150,15 +170,18 @@ class persona_model():
 		labels = tf.transpose(labels)
 		decoded_vocab_ids = tf.argmax(input=probs, axis=2) 
 		decoded_vocab_ids = tf.transpose(decoded_vocab_ids) # shape = (batch_size, sentence_max_length-1)
+		num = 0	
 		for row in range(self.params.batch_size - 5, self.params.batch_size, 1):
+			num += 1
 			sentence = []
 			ans = []
 			for col in range(0, tf.shape(decoded_vocab_ids)[1], 1):
 				sentence.append(list(self.data.vocab_dict.keys())[list(self.data.vocab_dict.values()).index(decoded_vocab_ids[row][col])])
 				ans.append(list(self.data.vocab_dict.keys())[list(self.data.vocab_dict.values()).index(labels[row][col])])
+			print('\nSample %d: ------------------------------------', num)
 			print(' '.join(word for word in sentence))
 			print(' '.join(word for word in ans))
-			print(self.sentence_bleu_score(sentence,labels[row]))
+			print(self.sentence_bleu_score(sentence, ans))
 		pass
 
 	def visualize_data(self, loss, mode='loss'):
@@ -214,7 +237,7 @@ class persona_model():
 
 if __name__ == '__main__':
 	
-	if len(sys.argv) != 3 or sys.argv[1] not in {"SPEAKER", "SPEAKER_ADDRESSEE"} or sys.argv[2] not in {"FRIENDS", "DIALOGUE"}:
+	if len(sys.argv) != 4 or sys.argv[1] not in {"SPEAKER", "SPEAKER_ADDRESSEE"} or sys.argv[2] not in {"FRIENDS", "DIALOGUE"} or sys.argv[3] not in {"TEST", "TRAIN"}:
 		print("USAGE: python personal_model.py <Model Type> <Dataset>")
 		print("<Model Type>: [SPEAKER / SPEAKER_ADDRESSEE]")
 		print("<Model Type>: [FRIENDS / DIALOGUE]")
@@ -231,6 +254,11 @@ if __name__ == '__main__':
 	elif sys.argv[2] == "DIALOGUE":
 		is_friends = False
 
+	if sys.argv[3] =="TEST":
+		is_test = True
+	else:
+		is_test = False
+
 
 	start = time.time()
 	params = persona_params()
@@ -238,7 +266,7 @@ if __name__ == '__main__':
 	print('personal_model.py: created params and data')
 	persona_m = persona_model(params, data, is_speaker, is_friends)
 	print('personal_model.py: created persona_model')
-	initial_state = persona_m.train()
+	initial_state = persona_m.train(is_test)
 	print('personal_model.py: finished training persona_model')
 	perplexity, acc = persona_m.test(initial_state)
 	print('test perplexity = ', perplexity)
