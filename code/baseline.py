@@ -54,9 +54,11 @@ class baseline_model(tf.keras.Model):
         return tf.reduce_sum(loss)
     
     def accuracy_function(self, prbs, labels):
+
         
         decoded_symbols = tf.argmax(input=prbs, axis=2)
-        accuracy = tf.reduce_mean((tf.cast(tf.equal(decoded_symbols, labels), dtype=tf.float32)))
+        mask = tf.cast(tf.where(decoded_symbols==0, 0, 1), tf.float32)
+        accuracy = tf.reduce_mean(tf.boolean_mask(tf.cast(tf.equal(decoded_symbols, labels), dtype=tf.float32),mask))
         
         return accuracy
 
