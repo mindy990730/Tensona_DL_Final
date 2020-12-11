@@ -152,6 +152,7 @@ class lstm_model(tf.keras.Model):
         self.beam_size = 200
         self.sentence_max_length = 20
         self.batch_size = 64
+        self.params = params
         # print('lstm_model is built!!!!!!!!!!!!!\n\n')
 
     def call(self, batched_source, batched_target, speaker_list, addressee_list, initial_state):
@@ -175,10 +176,28 @@ class lstm_model(tf.keras.Model):
         losses = []
         probs_list = []
         # Going horizontally by columns and predict one word each step; compare loss with target next word
+        
         for i in range(tf.shape(batched_target)[1]-1):
             target_ebd = tf.nn.embedding_lookup(self.target_embedding, batched_target[:, i]) # shape = (batch_size, 1, embed_size)
             probs, initial_state = self.decoder(encoded_output, initial_state, target_ebd, speaker_list, addressee_list)
+            # num_vocab = tf.shape(probs)[1]
+            # x = tf.Variable(probs)
+            
+            # if i < 5:
+            #     for row in range(self.params.batch_size):
+            #         addition = tf.convert_to_tensor(x.numpy()[row][0]/num_vocab)
+            #         probs = probs.assign_add(addition)
+            #         indices = tf.constant([[row, 0]])
+            #         update = tf.convert_to_tensor(x.numpy()[row][0])
+            #         probs = probs.scatter_nd_add(indices, update)
+            #         with tf.compat.v1.Session() as sess:
+            #             print(sess.run(add))
+                    # probs[row] = np.add(probs[row], probs[row][0]/num_vocab)
+                    # probs[row][0] = 0
+            # tf.convert_to_tensor(probs)
             labels = tf.squeeze(batched_target[:, i+1]) # shape = (batch_size,)
+            print('for %dth word probs = '%i, probs[0][0:3])
+            print('predicted word = ', tf.cast(tf.argmax(input=probs, axis=1), dtype=tf.int64))
             l = self.loss_func(probs, labels)
             # if i%5 ==0:
                 # print('loss in the sentence = ', l)

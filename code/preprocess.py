@@ -169,7 +169,8 @@ class Data():
             tokenized_speaker_scripts = []
             for sentence in speaker_scripts: 
                 tokenized_speaker_scripts.extend(sentence)
-
+            if len(tokenized_speaker_scripts) < 7:
+                continue
             # only keep sentence_max_length number of words at most
             if len(tokenized_speaker_scripts) > self.params.sentence_max_length:
                 tokenized_speaker_scripts = tokenized_speaker_scripts[:self.params.sentence_max_length]
@@ -198,7 +199,7 @@ class Data():
                     num_vocab += 1
                 tokenized_addressee_scripts[j] = vocab_dict[word]
             if len(tokenized_addressee_scripts) < self.params.sentence_max_length-2:
-                extension = np.zeros(self.params.sentence_max_length-len(tokenized_addressee_scripts)-2)
+                extension = np.ones(self.params.sentence_max_length-len(tokenized_addressee_scripts)-2)
                 tokenized_addressee_scripts.extend(extension)
             
             # Add EOS & EOT to tokenized_addressee_scripts

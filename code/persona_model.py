@@ -31,8 +31,8 @@ class persona_params():
 		self.speaker_mode = True
 		self.addressee_mode = True
 		
-		self.sentence_max_length = 20
-		self.max_epochs = 5
+		self.sentence_max_length = 15
+		self.max_epochs = 3
 		self.EOS = 0 
 		self.EOT = 1 
 
@@ -42,7 +42,7 @@ class persona_model():
 		self.data = data
 
 		if is_friends==True:
-			friends_data_dict = self.data.friends_tsv(num_seasons=2)
+			friends_data_dict = self.data.friends_tsv(num_seasons=3)
 			self.data_dict = self.data.cleanup_and_build_dict(friends_data_dict)
 			self.num_characters = self.data.num_characters
 		else:
@@ -80,10 +80,10 @@ class persona_model():
 			# 	self.params.lr_rate *= 0.5
 			# Loop through all train_data in batches
 			start_index = 0
-			if os.path.isdir('../saved_weights'):
-				self.model.encoder.load_weights('../saved_weights/en_weights.tf')
-				self.model.decoder.load_weights('../saved_weights/de_weights.tf')
-				print('Loaded existing weights.')
+			# if os.path.isdir('../saved_weights') and is_test:
+			# 	self.model.encoder.load_weights('../saved_weights/en_weights.tf')
+			# 	self.model.decoder.load_weights('../saved_weights/de_weights.tf')
+			# 	print('Loaded existing weights.')
 			while (start_index + self.params.batch_size) < len(self.train_data[0]):
 				if self.manager.latest_checkpoint:
 					print("Restored from {}".format(self.manager.latest_checkpoint))
@@ -92,7 +92,7 @@ class persona_model():
 				sources, targets, speakers, addressees = self.data.read_batch(self.train_data, start_index, mode='train')
 				with tf.GradientTape() as tape:
 					loss, probs = self.model.call(sources, targets, speakers, addressees, initial_state)
-				print('-----------batch ', int(start_index/self.params.batch_size), ": loss = ", loss, " ---------------\n")
+				print('-----------------------------batch ', int(start_index/self.params.batch_size), ": loss = ", loss, " ---------------------\n")
 				gradients = tape.gradient(loss, self.model.trainable_variables)
 				# print('       gradients = ', gradients)
 				self.model.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
@@ -104,7 +104,7 @@ class persona_model():
 					print(self.model.encoder.summary())
 					print(self.model.decoder.summary())
 				start_index += self.params.batch_size
-				if is_test:
+				if is_test and start_index == self.params.batch_size*3:
 					return initial_state
 			# Increment for next epoch
 			num_epochs += 1
@@ -171,17 +171,21 @@ class persona_model():
 		decoded_vocab_ids = tf.argmax(input=probs, axis=2) 
 		decoded_vocab_ids = tf.transpose(decoded_vocab_ids) # shape = (batch_size, sentence_max_length-1)
 		num = 0	
-		for row in range(self.params.batch_size - 5, self.params.batch_size, 1):
-			num += 1
+		all_scores = []
+		for row in range(0, self.params.batch_size, 1):
 			sentence = []
 			ans = []
 			for col in range(0, tf.shape(decoded_vocab_ids)[1], 1):
 				sentence.append(list(self.data.vocab_dict.keys())[list(self.data.vocab_dict.values()).index(decoded_vocab_ids[row][col])])
 				ans.append(list(self.data.vocab_dict.keys())[list(self.data.vocab_dict.values()).index(labels[row][col])])
-			print('\nSample %d: ------------------------------------', num)
-			print(' '.join(word for word in sentence))
-			print(' '.join(word for word in ans))
-			print(self.sentence_bleu_score(sentence, ans))
+			if num >= self.params.batch_size -5:
+				print('\nSample %d: ------------------------------------------------------------------------------'%num)
+				print(' '.join(word for word in sentence))
+				print(' '.join(word for word in ans))
+			for i in range(len(sentence)):
+				all_scores.append(sentence_bleu(sentence[i], ans[i]))
+			num += 1
+		print('ave bleu score = ', tf.reduce_mean(all_scores))
 		pass
 
 	def visualize_data(self, loss, mode='loss'):
