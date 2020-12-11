@@ -89,7 +89,7 @@ class Data():
         addressee_id = 1
 
         #for each conversation
-        for i in range (len(dialogues)):
+        for i in range (int(len(dialogues)/15)):
             conversation = dialogues[i].split('__eou__')
 
             if len(conversation) < 4:

@@ -23,7 +23,7 @@ class baseline_params():
 		self.addressee_mode = True
 		
 		self.sentence_max_length = 20
-		self.max_epochs = 5
+		self.max_epochs = 3
 
 class baseline_model(tf.keras.Model):
     def __init__(self, num_vocab, params):

@@ -32,7 +32,7 @@ class persona_params():
 		self.addressee_mode = True
 		
 		self.sentence_max_length = 15
-		self.max_epochs = 3
+		self.max_epochs = 2
 		self.EOS = 0 
 		self.EOT = 1 
 
